@@ -1,7 +1,7 @@
 &pic
   ! Small runnable example; not the production input used for paper figures.
   cfg_initial_condition = 2
-  cfg_particles_per_cell = 100
+  cfg_particles_per_cell = 10000
   cfg_nx = 32
   cfg_nvx = 40
   cfg_nvy = 40
