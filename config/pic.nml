@@ -1,0 +1,65 @@
+&pic
+  cfg_initial_condition = 1
+
+  cfg_particles_per_cell = 100000
+  cfg_nx  = 32
+  cfg_nvx = 40
+  cfg_nvy = 40
+  cfg_ntau = 16
+
+  cfg_domain_length = -1.0d0
+  cfg_velocity_x_length = 12.0d0
+  cfg_velocity_y_length = 12.0d0
+
+  cfg_epsilon = 1.0d-2
+  cfg_dt       = 5.0d-2
+  cfg_tfinal   = 2000.0d0
+
+  cfg_density_perturbation = 5.0d-2
+  cfg_two_stream_sigma_vx = 1.0d0
+  cfg_two_stream_sigma_vy = 1.4142135623730951d0
+  cfg_weibel_sigma_vx = 1.0d0
+  cfg_weibel_sigma_vy = 2.0d0
+  cfg_stream_velocity = 2.0d0
+  cfg_wave_number = 1.0d0
+
+  cfg_bz_two_stream = 1.0d-6
+  cfg_bz_weibel     = 1.0d-2
+
+  ! Initial condition 3 (bump-on-tail) parameters.
+  cfg_bump_tail_amplitude = 2.2222222222222222d-1
+  cfg_bump_drift_velocity = 4.5d0
+  cfg_bump_thermal_velocity = 5.0d-1
+  cfg_bump_bulk_sigma_vx = 1.0d0
+  cfg_bump_sigma_vy = 1.0d0
+
+  ! Particle implicit solve: 'iterative' (default, preconditioned GMRES)
+  ! or 'direct' (dense Gaussian elimination).
+  cfg_implicit_solver = 'iterative'
+  cfg_iterative_tolerance = 1.0d-12
+  cfg_iterative_restart = 30
+  cfg_iterative_max_iterations = 300
+/
+
+&pic_output
+  cfg_output_fxvx = .true.
+  cfg_output_fvxvy = .true.
+  cfg_output_rho = .false.
+  cfg_output_rhov = .false.
+  cfg_output_fields = .false.
+  cfg_output_mass = .false.
+  cfg_output_energy = .false.
+  cfg_output_kinetic_components = .false.
+  cfg_output_field_l2 = .false.
+  cfg_output_poisson = .false.
+  cfg_output_poisson_tau = .false.
+  cfg_output_momentum = .true.
+
+  cfg_output_initial = .true.
+  cfg_output_final = .true.
+
+  ! Snapshot files use physical time; scalar diagnostics use time-step count.
+  cfg_snapshot_interval = 100.0d0
+  cfg_diagnostic_interval_steps = 1
+  cfg_output_prefix = ''
+/
