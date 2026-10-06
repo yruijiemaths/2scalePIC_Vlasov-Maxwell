@@ -925,8 +925,7 @@ real(8) :: mean_current
 
 do ix = 0, nx-1
     do itau = 0, Ntau-1
-        mean_current = sum(jx(itau,0:nx-1))/real(nx,8)
-        rhs_tau(itau) = cmplx(-(jx(itau,ix)-mean_current),0.d0,kind=8)
+        rhs_tau(itau) = cmplx(-(jx(itau,ix)),0.d0,kind=8)
     enddo
     call be_tau_update(ex_old(:,ix),rhs_tau,ex_new(:,ix))
 enddo
