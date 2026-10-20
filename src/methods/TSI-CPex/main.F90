@@ -40,6 +40,7 @@ complex(8), allocatable  :: Cur(:,:,:), dEydx(:,:,:), dBzdx(:,:,:), dCurdt(:,:,:
 complex(8), allocatable  :: rho_total_tau(:,:), rho_total_new_tau(:,:), rho_total_old_tau(:,:)
 complex(8), allocatable :: ptau(:), ptauh(:), fftin(:), fftout(:)
 real(8), allocatable :: ex_mean_new(:)
+real(8), allocatable :: x_mean_local(:), x_mean_global(:)
 complex(8), allocatable :: Stau(:,:), Stautemp(:,:), Stau1(:,:)
 complex(8), allocatable :: dUcdt(:,:,:)
 real(8) , allocatable    ::  ktau(:), tau(:)
@@ -69,6 +70,7 @@ call apply_pic_config(nx,nvx,nvy,dimx,dimvx,dimvy,ep,dt,tfinal)
 call print_pic_config(prank)
 allocate(ptau(0:Ntau-1),ptauh(0:Ntau-1),fftin(0:Ntau-1),fftout(0:Ntau-1))
 allocate(ex_mean_new(0:Ntau-1))
+allocate(x_mean_local(0:Ntau-1),x_mean_global(0:Ntau-1))
 allocate(Stau(6,0:Ntau-1),Stautemp(6,0:Ntau-1),Stau1(6,0:Ntau-1))
 nstep=nint(tfinal/dt)
 if (nstep < 1_8) error stop 'tfinal/dt must produce at least one time step.'
@@ -513,7 +515,15 @@ do k=0,nx
     Uc(3,:,k) = B_ini(k) + (Sc1st(3,:,k) - Sc1st(3,0,k)) * ep - (Sc2nd(3,:,k) - Sc2nd(3,0,k)) * ep * ep
 enddo
 
+! For the spatial zero mode, Ampere plus the particle X equation transports
+! mean(Ex) + sum_p(w_p X_p)/L in tau.  Prepare that invariant as a constant;
+! at tau=0 the physical Poisson field has zero mean.
 do i=0,Ntau-1
+    x_mean_local(i)=sum(p%w(:)*real(Up(1,i,:),kind=8))/dimx
+enddo
+call MPI_ALLREDUCE(x_mean_local,x_mean_global,Ntau,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,code)
+do i=0,Ntau-1
+    ex_mean_new(i)=x_mean_global(0)-x_mean_global(i)
     cc=dcos(tau(i))
     ss=dsin(tau(i))
     p%pos(:,1)=dreal(Up(1,i,:))
@@ -525,7 +535,7 @@ do i=0,Ntau-1
     call remove_nyquist_from_rho(rho_total, nx)
     rho_tau(0,i,:)=rho_total
     call solve_poisson(rho_total, nx, dimx, f%ex)
-    Uc(1,i,:) = dcmplx(f%ex(:), 0.d0)
+    Uc(1,i,:) = dcmplx(f%ex(:)+ex_mean_new(i), 0.d0)
 enddo
 
 endif
@@ -868,7 +878,7 @@ deallocate(B_ini)
 deallocate(rho_total_tau)
 deallocate(rho_total_new_tau)
 deallocate(rho_total_old_tau)
-deallocate(ex_mean_new)
+deallocate(ex_mean_new,x_mean_local,x_mean_global)
 call MPI_BARRIER(MPI_COMM_WORLD,code)
 call MPI_FINALIZE(code)
 
@@ -976,13 +986,24 @@ complex(8) :: phase
 integer :: itau, mode
 
 do itau=0,Ntau-1
-    old_mean(itau)=sum(ex_reference(itau,0:nx-1))/real(nx,8)
     mean_current(itau)=sum(Cur(1,itau,0:nx-1))/real(nx,8)
 enddo
-call dfftw_execute_dft(fwtau, old_mean, old_hat)
 call dfftw_execute_dft(fwtau, mean_current, current_hat)
-old_hat=old_hat/real(Ntau,8)
 current_hat=current_hat/real(Ntau,8)
+if (first_step) then
+    ! Prediction receives physical tau samples in Utempc.
+    do itau=0,Ntau-1
+        old_mean(itau)=sum(ex_reference(itau,0:nx-1))/real(nx,8)
+    enddo
+    call dfftw_execute_dft(fwtau, old_mean, old_hat)
+    old_hat=old_hat/real(Ntau,8)
+else
+    ! Correction receives Ucn_1 after the main loop has Fourier transformed
+    ! and normalized it; taking another FFT here would corrupt the zero mode.
+    do mode=0,Ntau-1
+        old_hat(mode)=sum(ex_reference(mode,0:nx-1))/real(nx,8)
+    enddo
+endif
 do mode=0,Ntau-1
     if (first_step) then
         phase=cdexp(-dt*cmplx(0d0,ktau(mode),kind=8)/ep)
