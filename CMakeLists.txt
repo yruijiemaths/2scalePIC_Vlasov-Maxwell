@@ -49,7 +49,15 @@ find_library(FFTW_LIBRARY NAMES fftw3
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(FFTW REQUIRED_VARS FFTW_INCLUDE_DIR FFTW_LIBRARY)
 
-set(_method_source "${CMAKE_CURRENT_SOURCE_DIR}/src/methods/${PIC_METHOD}/main.F90")
+set(PIC_MAIN_SOURCE "main" CACHE STRING "Method entry point: main or main_full")
+set_property(CACHE PIC_MAIN_SOURCE PROPERTY STRINGS main main_full)
+if(NOT PIC_MAIN_SOURCE STREQUAL "main" AND NOT PIC_MAIN_SOURCE STREQUAL "main_full")
+  message(FATAL_ERROR "PIC_MAIN_SOURCE must be main or main_full")
+endif()
+set(_method_source "${CMAKE_CURRENT_SOURCE_DIR}/src/methods/${PIC_METHOD}/${PIC_MAIN_SOURCE}.F90")
+if(NOT EXISTS "${_method_source}")
+  message(FATAL_ERROR "Method source does not exist: ${_method_source}")
+endif()
 set(_grid_dir "${CMAKE_CURRENT_SOURCE_DIR}/src/grids/${_selected_grid}")
 
 add_executable(pic-vm
