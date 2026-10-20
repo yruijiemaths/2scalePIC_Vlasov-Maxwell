@@ -39,6 +39,7 @@ complex(8), allocatable  :: Ele(:,:,:), Mag(:,:,:)!Particle
 complex(8), allocatable  :: Cur(:,:,:), dEydx(:,:,:), dBzdx(:,:,:), dCurdt(:,:,:), dCurdx(:,:,:)!Cell
 complex(8), allocatable  :: rho_total_tau(:,:), rho_total_new_tau(:,:), rho_total_old_tau(:,:)
 complex(8), allocatable :: ptau(:), ptauh(:), fftin(:), fftout(:)
+real(8), allocatable :: ex_mean_new(:)
 complex(8), allocatable :: Stau(:,:), Stautemp(:,:), Stau1(:,:)
 complex(8), allocatable :: dUcdt(:,:,:)
 real(8) , allocatable    ::  ktau(:), tau(:)
@@ -67,6 +68,7 @@ Ntau=cfg_ntau
 call apply_pic_config(nx,nvx,nvy,dimx,dimvx,dimvy,ep,dt,tfinal)
 call print_pic_config(prank)
 allocate(ptau(0:Ntau-1),ptauh(0:Ntau-1),fftin(0:Ntau-1),fftout(0:Ntau-1))
+allocate(ex_mean_new(0:Ntau-1))
 allocate(Stau(6,0:Ntau-1),Stautemp(6,0:Ntau-1),Stau1(6,0:Ntau-1))
 nstep=nint(tfinal/dt)
 if (nstep < 1_8) error stop 'tfinal/dt must produce at least one time step.'
@@ -866,6 +868,7 @@ deallocate(B_ini)
 deallocate(rho_total_tau)
 deallocate(rho_total_new_tau)
 deallocate(rho_total_old_tau)
+deallocate(ex_mean_new)
 call MPI_BARRIER(MPI_COMM_WORLD,code)
 call MPI_FINALIZE(code)
 
@@ -963,6 +966,37 @@ end do
 end subroutine output_particles
 
 
+subroutine advance_ex_mean(ex_reference, first_step, ex_mean)
+complex(8), intent(in) :: ex_reference(0:Ntau-1,0:nx)
+logical, intent(in) :: first_step
+real(8), intent(out) :: ex_mean(0:Ntau-1)
+complex(8) :: old_mean(0:Ntau-1), mean_current(0:Ntau-1)
+complex(8) :: old_hat(0:Ntau-1), current_hat(0:Ntau-1), new_hat(0:Ntau-1)
+complex(8) :: phase
+integer :: itau, mode
+
+do itau=0,Ntau-1
+    old_mean(itau)=sum(ex_reference(itau,0:nx-1))/real(nx,8)
+    mean_current(itau)=sum(Cur(1,itau,0:nx-1))/real(nx,8)
+enddo
+call dfftw_execute_dft(fwtau, old_mean, old_hat)
+call dfftw_execute_dft(fwtau, mean_current, current_hat)
+old_hat=old_hat/real(Ntau,8)
+current_hat=current_hat/real(Ntau,8)
+do mode=0,Ntau-1
+    if (first_step) then
+        phase=cdexp(-dt*cmplx(0d0,ktau(mode),kind=8)/ep)
+        new_hat(mode)=phase*old_hat(mode)-ptauh(mode)*current_hat(mode)
+    else
+        phase=cdexp(-2*dt*cmplx(0d0,ktau(mode),kind=8)/ep)
+        new_hat(mode)=phase*old_hat(mode) &
+            -(ptauh(mode)+phase*ptau(mode))*current_hat(mode)
+    endif
+enddo
+call dfftw_execute_dft(bwtau, new_hat, fftout)
+ex_mean=real(fftout,kind=8)
+end subroutine advance_ex_mean
+
 subroutine prediction()
 do i=0,Ntau-1
     cc=dcos(tau(i))
@@ -1044,8 +1078,12 @@ do k=0,nx
     call dfftw_execute_dft(bwtau, fftin, fftout)
     Uc_dExdx(:,k)=fftout
 enddo
+! The continuity equation fixes only d_x Ex.  Advance its spatial mean
+! with the same exponential rule as the transverse fields, then restore it
+! when inverting d_x.
+call advance_ex_mean(Utempc(1,:,:), .true., ex_mean_new)
 do i=0,Ntau-1
-    call calcul_inv_dx(nx, dimx, dreal(Uc_dExdx(i,:)), 0.d0, tmp_vector)
+    call calcul_inv_dx(nx, dimx, dreal(Uc_dExdx(i,:)), ex_mean_new(i), tmp_vector)
     Uc_Ex(i,:) = dcmplx(tmp_vector, 0.d0)
 enddo
 
@@ -1169,8 +1207,9 @@ do k=0,nx
     call dfftw_execute_dft(bwtau, fftin, fftout)
     Uc_dExdx(:,k)=fftout
 enddo
+call advance_ex_mean(Ucn_1(1,:,:), .false., ex_mean_new)
 do i=0,Ntau-1
-    call calcul_inv_dx(nx, dimx, dreal(Uc_dExdx(i,:)), 0.d0, tmp_vector)
+    call calcul_inv_dx(nx, dimx, dreal(Uc_dExdx(i,:)), ex_mean_new(i), tmp_vector)
     Uc_Ex(i,:) = dcmplx(tmp_vector, 0.d0)
 enddo
 
